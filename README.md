@@ -29,7 +29,7 @@ cargo build --examples --release
 
 # open another console
 npm run build_node
-node scripts/run_keygen_sign_node.js
+node scripts/multi_keygen_and_sign.js
 ```
 
 ## Function Test via Web
