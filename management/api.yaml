@@ -1,0 +1,378 @@
+openapi: 3.0.0
+info:
+  title: API Server
+  version: "1.0.0"
+  description: >
+    公開エンドポイント（/login, /tasks）と内部エンドポイント（/internal/*）を持つAPIサーバーです。
+servers:
+  - url: http://localhost:3000
+paths:
+  /login:
+    post:
+      tags:
+        - Public
+      summary: ユーザー認証
+      description: ユーザー名とパスワードを受け取り、認証成功時にJWTを発行します。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            examples:
+              example:
+                value:
+                  username: "test"
+                  password: "test123"
+      responses:
+        '200':
+          description: 認証成功時にJWTを返します。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        '400':
+          description: リクエストパラメータが不足または不正です。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '401':
+          description: 認証に失敗しました。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /tasks:
+    post:
+      tags:
+        - Public
+      summary: タスクの新規作成
+      description: >
+        JWT認証が必要です。タスク情報を受け取り、タスクを作成し、登録されたタスクのUUIDを返します。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreationRequest"
+            examples:
+              keygeneration:
+                summary: keygenerationタスク例
+                value:
+                  type: "keygeneration"
+                  parameters:
+                    threshold: 1
+                    party: 3
+              sign:
+                summary: signタスク例
+                value:
+                  type: "sign"
+                  parameters:
+                    message: "hello"
+      responses:
+        '200':
+          description: タスクが正常に登録されました。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskCreationResponse"
+        '400':
+          description: リクエストが不正です。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: データベースエラー等のサーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/tasks/{taskId}:
+    get:
+      tags:
+        - Internal
+      summary: タスクの取得
+      description: 指定されたタスクIDのタスク情報を取得します。
+      parameters:
+        - in: path
+          name: taskId
+          required: true
+          schema:
+            type: string
+          description: タスクのUUID
+      responses:
+        '200':
+          description: タスク情報を返します。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        '400':
+          description: taskIdが指定されていない場合
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '404':
+          description: タスクが存在しない場合
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: データベースエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/tasks/{taskId}/status:
+    patch:
+      tags:
+        - Internal
+      summary: タスクのステータス更新
+      description: >
+        指定されたタスクIDのステータスを更新します。許容されるステータスは "created", "processing", "completed", "canceled" です。
+      parameters:
+        - in: path
+          name: taskId
+          required: true
+          schema:
+            type: string
+          description: タスクのUUID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskStatusUpdateRequest"
+            examples:
+              example:
+                value:
+                  status: "completed"
+      responses:
+        '200':
+          description: タスクのステータスが更新されました。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        '400':
+          description: リクエストパラメータが不足または不正です。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '404':
+          description: 指定したタスクが見つかりません。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/generated_user_key/{user_id}:
+    put:
+      tags:
+        - Internal
+      summary: generated_user_key のアップサート
+      description: >
+        指定された user_id の key_data を HTTP ボディから受け取り、generated_user_key テーブルへ登録または更新します。
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+          description: ユーザーID（usersテーブルのID）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertKeyRequest"
+            examples:
+              example:
+                value:
+                  key_data: "example_key_data"
+      responses:
+        '200':
+          description: generated_user_key がアップサートされました。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        '400':
+          description: リクエストパラメータが不足または不正です。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: データベースエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/check_token:
+    post:
+      tags:
+        - Internal
+      summary: トークン検証
+      description: HTTPボディで渡されたトークンの有効性を検証します。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckTokenRequest"
+            examples:
+              example:
+                value:
+                  token: "your-jwt-token"
+      responses:
+        '200':
+          description: トークン検証結果を返します。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckTokenResponse"
+        '400':
+          description: リクエストが不正です。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: 発行されたJWTトークン
+
+    TaskCreationRequest:
+      type: object
+      required:
+        - type
+        - parameters
+      properties:
+        type:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+
+    TaskCreationResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        taskId:
+          type: string
+          description: 登録されたタスクのUUID
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          description: タスクのUUID
+        type:
+          type: string
+        parameters:
+          type: string
+          description: JSON文字列として保存されたパラメータ
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: integer
+
+    TaskStatusUpdateRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: ["created", "processing", "completed", "canceled"]
+
+    UpsertKeyRequest:
+      type: object
+      required:
+        - key_data
+      properties:
+        key_data:
+          type: string
+
+    CheckTokenRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+
+    CheckTokenResponse:
+      type: object
+      properties:
+        result:
+          type: string
+          enum: ["valid", "invalid"]
+
+    SuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
