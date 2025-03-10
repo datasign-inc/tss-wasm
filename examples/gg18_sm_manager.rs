@@ -1,13 +1,19 @@
-// #[cfg(not(target_arch = "wasm32"))]
-// use rocket::fairing::{Fairing, Info, Kind};
+#[cfg(not(target_arch = "wasm32"))]
+use reqwest;
+#[cfg(not(target_arch = "wasm32"))]
+use rocket::http::Status;
+#[cfg(not(target_arch = "wasm32"))]
+use rocket::request::{FromRequest, Outcome};
 #[cfg(not(target_arch = "wasm32"))]
 use rocket::serde::json::Json;
 #[cfg(not(target_arch = "wasm32"))]
+use rocket::Request;
+#[cfg(not(target_arch = "wasm32"))]
 use rocket::{post, routes, State};
-// #[cfg(not(target_arch = "wasm32"))]
-// use rocket::{Request, Response};
 #[cfg(not(target_arch = "wasm32"))]
 use rocket_cors::{AllowedOrigins, CorsOptions};
+#[cfg(not(target_arch = "wasm32"))]
+use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
@@ -20,8 +26,81 @@ use tss_wasm::common::{Entry, Index, Key, Params, PartySignup};
 use uuid::Uuid;
 
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug)]
+struct ApiKey(String);
+
+
+#[cfg(not(target_arch = "wasm32"))]
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for ApiKey {
+    type Error = ();
+
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        if let Some(auth_header) = request.headers().get_one("Authorization") {
+            if let Some(token) = auth_header.strip_prefix("Bearer ") {
+                if check_token(token).await {
+                    return Outcome::Success(ApiKey(token.to_string()));
+                }
+            }
+        }
+        Outcome::<Self, Self::Error>::Error((Status::Forbidden, ()))
+    }
+}
+
+
+
+/// チェックサーバー (http://localhost:3000/internal/check_token) に対して
+/// JSON形式で <token> を問い合わせ、レスポンスの "result" が "valid" なら true を返す。
+#[cfg(not(target_arch = "wasm32"))]
+async fn check_token(token: &str) -> bool {
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({ "token": token });
+    let response = client
+        .post("http://localhost:3000/internal/check_token")
+        .json(&body)
+        .send()
+        .await;
+
+    match response {
+        Ok(resp) => {
+            let json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
+            json.get("result").map_or(false, |v| v == "valid")
+        }
+        Err(_) => false,
+    }
+}
+
+
+/// チェックサーバーから task 情報を取得するためのレスポンス JSON に対応する構造体。
+#[derive(Debug, Deserialize)]
+struct Task {
+    id: String,
+    #[serde(rename = "type")]
+    task_type: String,
+    parameters: String,
+    status: String,
+    created_at: String,
+    created_by: String,
+}
+
+/// 指定された taskId を元に、 http://localhost:3000/internal/tasks/{taskId} にアクセスし、
+/// JSON をパースして Task 型として返却する関数。
+#[cfg(not(target_arch = "wasm32"))]
+async fn get_task(task_id: &str) -> Result<Task, reqwest::Error> {
+    let url = format!("http://localhost:3000/internal/tasks/{}", task_id);
+    let client = reqwest::Client::new();
+    let response = client.get(&url).send().await?;
+    let task = response.json::<Task>().await?;
+    Ok(task)
+}
+
+
+
+
+#[cfg(not(target_arch = "wasm32"))]
 #[post("/get", format = "json", data = "<request>")]
 fn get(
+    _auth: ApiKey, // Authorizationチェック済み
     db_mtx: &State<RwLock<HashMap<Key, String>>>,
     request: Json<Index>,
 ) -> Json<Result<Entry, ()>> {
@@ -41,7 +120,11 @@ fn get(
 
 #[cfg(not(target_arch = "wasm32"))]
 #[post("/set", format = "json", data = "<request>")]
-fn set(db_mtx: &State<RwLock<HashMap<Key, String>>>, request: Json<Entry>) -> Json<Result<(), ()>> {
+fn set(
+    _auth: ApiKey, // Authorizationチェック済み
+    db_mtx: &State<RwLock<HashMap<Key, String>>>,
+    request: Json<Entry>,
+) -> Json<Result<(), ()>> {
     let entry: Entry = request.0;
     let mut hm = db_mtx.write().unwrap();
     hm.insert(entry.key.clone(), entry.value);
@@ -50,7 +133,10 @@ fn set(db_mtx: &State<RwLock<HashMap<Key, String>>>, request: Json<Entry>) -> Js
 
 #[cfg(not(target_arch = "wasm32"))]
 #[post("/signupkeygen", format = "json")]
-fn signup_keygen(db_mtx: &State<RwLock<HashMap<Key, String>>>) -> Json<Result<PartySignup, ()>> {
+fn signup_keygen(
+    _auth: ApiKey, // Authorizationチェック済み
+    db_mtx: &State<RwLock<HashMap<Key, String>>>,
+) -> Json<Result<PartySignup, ()>> {
     let data = fs::read_to_string("params.json")
         .expect("Unable to read params, make sure config file is present in the same folder ");
     let params: Params = serde_json::from_str(&data).unwrap();
@@ -81,8 +167,11 @@ fn signup_keygen(db_mtx: &State<RwLock<HashMap<Key, String>>>) -> Json<Result<Pa
 
 #[cfg(not(target_arch = "wasm32"))]
 #[post("/signupsign", format = "json")]
-fn signup_sign(db_mtx: &State<RwLock<HashMap<Key, String>>>) -> Json<Result<PartySignup, ()>> {
-    //read parameters:
+fn signup_sign(
+    _auth: ApiKey, // Authorizationチェック済み
+    db_mtx: &State<RwLock<HashMap<Key, String>>>,
+) -> Json<Result<PartySignup, ()>> {
+    // read parameters:
     let data = fs::read_to_string("params.json")
         .expect("Unable to read params, make sure config file is present in the same folder ");
     let params: Params = serde_json::from_str(&data).unwrap();
