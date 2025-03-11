@@ -143,7 +143,7 @@ paths:
         - Internal
       summary: タスクのステータス更新
       description: >
-        指定されたタスクIDのステータスを更新します。許容されるステータスは "created", "processing", "completed", "canceled" です。
+        指定されたタスクIDのステータスを更新します。許容されるステータスは "created", "processing", "completed", "canceled", "failed" です。
       parameters:
         - in: path
           name: taskId
@@ -377,7 +377,7 @@ components:
       properties:
         status:
           type: string
-          enum: ["created", "processing", "completed", "canceled"]
+          enum: ["created", "processing", "completed", "canceled", "failed"]
 
     UpsertKeyRequest:
       type: object

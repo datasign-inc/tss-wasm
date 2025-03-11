@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 
-// Node.js 18以降ではfetchがグローバルに利用可能です。
-// もしNode.jsのバージョンが低い場合は、node-fetch等を利用してください。
 const fetch = global.fetch || require('node-fetch');
 
-// gg18モジュール（既存の暗号ライブラリなどと仮定）
 const gg18 = require('../pkg');
 
-// 既存の keygen 実装
+const GG18_KEYGEN_ADDR = "http://localhost:8000";
+const GG18_SIGN_ADDR = "http://localhost:8000";
+const MGT_SERVER_ADDR = "http://localhost:3000"
+
+/**
+ * 既存の keygen 実装
+ */
 async function keygen(addr, t, n, delay) {
     let context = await gg18.gg18_keygen_client_new_context(addr, t, n, delay);
     console.log('keygen new context: ', context);
@@ -24,7 +27,9 @@ async function keygen(addr, t, n, delay) {
     return keygen_json;
 }
 
-// 既存の sign 実装
+/**
+ * 既存の sign 実装
+ */
 async function sign(addr, t, n, message, key_store, delay) {
     console.log(`creating signature for : ${message}`);
     let context = await gg18.gg18_sign_client_new_context(addr, t, n, key_store, message);
@@ -52,122 +57,171 @@ async function sign(addr, t, n, message, key_store, delay) {
     return sign_json;
 }
 
-async function main() {
-    // 1. コマンドライン引数から taskId を取得
-    const args = process.argv.slice(2);
-    if (args.length !== 1) {
-        console.error("Usage: node server_side_party.js <taskId>");
-        process.exit(1);
+/**
+ * keygeneration タイプのタスク処理
+ * 1. パラメータのチェック
+ * 2. keygen の実行
+ * 3. keygen の結果を管理サーバーへPUTで永続化（PUT先: /internal/generated_user_key/{user_id}）
+ */
+async function processKeyGeneration(task, params, delay) {
+    if (!("t" in params) || !("n" in params)) {
+        throw new Error("Parameters for keygeneration must include 't' and 'n'");
     }
-    const taskId = args[0];
+    const result = await keygen(GG18_KEYGEN_ADDR, params.t, params.n, delay);
+    console.log("Key generation result:", result);
 
-    // 2. 管理サーバーから task 情報を取得
+    // PUTで結果を永続化
+    const putUrl = `http://localhost:3000/internal/generated_user_key/${task.created_by}`;
+    const putResponse = await fetch(putUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key_data: result })
+    });
+    if (!putResponse.ok) {
+        throw new Error(`Failed to persist key generation result: HTTP ${putResponse.status}`);
+    }
+}
+
+/**
+ * signing タイプのタスク処理
+ * 1. パラメータのチェック
+ * 2. 管理サーバーから generated_user_key を取得
+ * 3. sign の実行
+ */
+async function processSigning(task, params, delay) {
+    if (!("t" in params) || !("n" in params) || !("message" in params)) {
+        throw new Error("Parameters for signing must include 't', 'n', and 'message'");
+    }
+    const keyUrl = `http://localhost:3000/internal/generated_user_key/${task.created_by}`;
+    let keyResponse;
+    try {
+        keyResponse = await fetch(keyUrl);
+    } catch (err) {
+        throw new Error("Failed to fetch generated user key: " + err);
+    }
+    if (!keyResponse.ok) {
+        throw new Error(`Failed to fetch generated user key: HTTP ${keyResponse.status}`);
+    }
+    let keyData;
+    try {
+        keyData = await keyResponse.json();
+    } catch (err) {
+        throw new Error("Failed to parse generated user key JSON: " + err);
+    }
+    if (!("key_data" in keyData)) {
+        throw new Error("Generated user key JSON does not contain 'key_data'");
+    }
+    const result = await sign(GG18_SIGN_ADDR, params.t, params.n, params.message, keyData.key_data, delay);
+    console.log("Signing result:", result);
+}
+
+/**
+ * タスクのステータスをPATCHで更新する補助関数
+ * PATCH先: /internal/tasks/{taskId}/status
+ */
+async function patchTaskStatus(taskId, status) {
+    const patchUrl = `http://localhost:3000/internal/tasks/${taskId}/status`;
+    const response = await fetch(patchUrl, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+    });
+    if (!response.ok) {
+        console.error(`Failed to patch task status to ${status}: HTTP ${response.status}`);
+    } else {
+        console.log(`Task status updated to ${status}`);
+    }
+}
+
+async function getTask(taskId) {
+    // 管理サーバーから task 情報を取得
     const taskUrl = `http://localhost:3000/internal/tasks/${taskId}`;
     let response;
     try {
         response = await fetch(taskUrl);
     } catch (err) {
         console.error("Failed to fetch task:", err);
+        await patchTaskStatus(taskId, "failed");
         process.exit(1);
     }
     if (!response.ok) {
         console.error(`Failed to fetch task: HTTP ${response.status}`);
+        await patchTaskStatus(taskId, "failed");
         process.exit(1);
     }
     let task;
     try {
         task = await response.json();
+        return task
     } catch (err) {
         console.error("Failed to parse task JSON:", err);
+        await patchTaskStatus(taskId, "failed");
+        process.exit(1);
+    }
+}
+
+/**
+ * main処理
+ * 1. taskIdの取得、タスク情報のフェッチ・検証
+ * 2. task.parametersのパースとdelay算出
+ * 3. task.typeに応じた処理の呼び出し（エラー発生時はキャッチ）
+ * 4. 正常／異常に応じたタスクステータスのPATCH更新
+ */
+async function main() {
+    // コマンドライン引数から taskId を取得
+    const args = process.argv.slice(2);
+    if (args.length !== 1) {
+        console.error("Usage: node server_side_party.js <taskId>");
+        process.exit(1);
+    }
+    const taskId = args[0];
+    const task = await getTask(taskId);
+
+    if (!task) {
+        console.error(`unable to get task: ${taskId}`);
         process.exit(1);
     }
 
-    // 3. チェック: status が "created" であり、id が taskId と一致すること
+    // チェック: status が "created" であり、id が taskId と一致すること
     if (task.status !== "created") {
         console.error(`Task status is not 'created': ${task.status}`);
+        await patchTaskStatus(taskId, "failed");
         process.exit(1);
     }
     if (task.id !== taskId) {
         console.error(`Task id mismatch: expected ${taskId}, got ${task.id}`);
+        await patchTaskStatus(taskId, "failed");
         process.exit(1);
     }
 
-    // 4. task.parameters を JSON としてパース
+    // task.parameters を JSON としてパース
     let params;
     try {
         params = JSON.parse(task.parameters);
     } catch (err) {
         console.error("Failed to parse task.parameters as JSON:", err);
+        await patchTaskStatus(taskId, "failed");
         process.exit(1);
     }
 
-    // delay の算出: Math.random() % 500 は意味がないため、0～500の乱数から100以上を保証する
+    // delay の算出: 0～500の乱数から100以上を保証
     const delay = Math.max(Math.floor(Math.random() * 500), 100);
 
-    // ハードコードしたアドレス（適当なURLを設定してください）
-    const KEYGEN_ADDR = "http://hardcoded-keygen-address.example.com";
-    const SIGN_ADDR = "http://hardcoded-sign-address.example.com";
-
-    // 5. type に応じた処理
-    if (task.type === "keygeneration") {
-        // keygenerationの場合、paramsは "t" と "n" を含むことをチェック
-        if (!("t" in params) || !("n" in params)) {
-            console.error("Parameters for keygeneration must include 't' and 'n'");
-            process.exit(1);
+    try {
+        await patchTaskStatus(taskId, "processing");
+        if (task.type === "keygeneration") {
+            await processKeyGeneration(task, params, delay);
+        } else if (task.type === "signing") {
+            await processSigning(task, params, delay);
+        } else {
+            throw new Error(`Unknown task type: ${task.type}`);
         }
-        try {
-            const result = await keygen(KEYGEN_ADDR, params.t, params.n, delay);
-            console.log("Key generation result:", result);
-        } catch (err) {
-            console.error("Error during key generation:", err);
-            process.exit(1);
-        }
-    } else if (task.type === "signing") {
-        // signingの場合、paramsは "t", "n", "message" を含むことをチェック
-        if (!("t" in params) || !("n" in params) || !("message" in params)) {
-            console.error("Parameters for signing must include 't', 'n', and 'message'");
-            process.exit(1);
-        }
-        // 管理サーバーから created_by を使って generated_user_key を取得
-        const keyUrl = `http://localhost:3000/internal/generated_user_key/${task.created_by}`;
-        let keyResponse;
-        try {
-            keyResponse = await fetch(keyUrl);
-        } catch (err) {
-            console.error("Failed to fetch generated user key:", err);
-            process.exit(1);
-        }
-        if (!keyResponse.ok) {
-            console.error(`Failed to fetch generated user key: HTTP ${keyResponse.status}`);
-            process.exit(1);
-        }
-        let keyData;
-        try {
-            keyData = await keyResponse.json();
-        } catch (err) {
-            console.error("Failed to parse generated user key JSON:", err);
-            process.exit(1);
-        }
-        if (!("key_data" in keyData)) {
-            console.error("Generated user key JSON does not contain 'key_data'");
-            process.exit(1);
-        }
-        try {
-            const result = await sign(
-                SIGN_ADDR,
-                params.t,
-                params.n,
-                params.message,
-                keyData.key_data,
-                delay
-            );
-            console.log("Signing result:", result);
-        } catch (err) {
-            console.error("Error during signing:", err);
-            process.exit(1);
-        }
-    } else {
-        console.error(`Unknown task type: ${task.type}`);
+        // 正常終了時はタスクステータスを completed に更新
+        await patchTaskStatus(taskId, "completed");
+    } catch (err) {
+        console.error("Error processing task:", err);
+        // エラー発生時はタスクステータスを failed に更新
+        await patchTaskStatus(taskId, "failed");
         process.exit(1);
     }
 }

@@ -32,11 +32,11 @@ router.get('/internal/tasks/:taskId', async (ctx) => {
 router.patch('/internal/tasks/:taskId/status', async (ctx) => {
     const { taskId } = ctx.params;
     const { status } = ctx.request.body;
-    const allowedStatuses = ["created", "processing", "completed", "canceled"];
+    const allowedStatuses = ["created", "processing", "completed", "canceled", "failed"];
 
     if (!status || !allowedStatuses.includes(status)) {
         ctx.status = 400;
-        ctx.body = { error: '無効なステータスです。allowed values: "created", "processing", "completed", "canceled"' };
+        ctx.body = { error: '無効なステータスです。allowed values: "created", "processing", "completed", "canceled", "failed"' };
         return;
     }
 
@@ -69,6 +69,28 @@ router.put('/internal/generated_user_key/:user_id', async (ctx) => {
     } catch (err) {
         ctx.status = 500;
         ctx.body = { error: 'データベースエラー' };
+    }
+});
+
+router.get('/internal/generated_user_key/:user_id', async (ctx) => {
+    const user_id = ctx.params.user_id;
+    if (!user_id) {
+        ctx.status = 400;
+        ctx.body = { error: 'specify user id' };
+        return;
+    }
+    try {
+        const keyData = await dbAPI.getKeyByUserId(user_id);
+        if (!keyData) {
+            ctx.status = 404;
+            ctx.body = { error: 'Generated user key not found' };
+        } else {
+            ctx.status = 200;
+            ctx.body = { key_data: keyData }; // keyData はDBから取得した文字列（JSONエンコード済みの文字列）
+        }
+    } catch (err) {
+        ctx.status = 500;
+        ctx.body = { error: 'Database error' };
     }
 });
 
