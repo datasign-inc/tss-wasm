@@ -16,7 +16,10 @@ function buildManagementServerUrl(path) {
 /**
  * 既存の keygen 実装
  */
-async function keygen(addr, t, n, delay) {
+async function keygen(addr, t, n, delay, token) {
+
+    // todo: send `token` to GG18 server
+
     let context = await gg18.gg18_keygen_client_new_context(addr, t, n, delay);
     console.log('keygen new context: ', context);
     context = await gg18.gg18_keygen_client_round1(context, delay);
@@ -35,7 +38,10 @@ async function keygen(addr, t, n, delay) {
 /**
  * 既存の sign 実装
  */
-async function sign(addr, t, n, message, key_store, delay) {
+async function sign(addr, t, n, message, key_store, delay, token) {
+
+    // todo: send `token` to GG18 server
+
     console.log(`creating signature for : ${message}`);
     let context = await gg18.gg18_sign_client_new_context(addr, t, n, key_store, message);
     console.log('sign new context: ', context);
@@ -68,11 +74,11 @@ async function sign(addr, t, n, message, key_store, delay) {
  * 2. keygen の実行
  * 3. keygen の結果を管理サーバーへPUTで永続化（PUT先: /internal/generated_user_key/{user_id}）
  */
-async function processKeyGeneration(task, params, delay) {
+async function processKeyGeneration(task, params, delay, token) {
     if (!("t" in params) || !("n" in params)) {
         throw new Error("Parameters for keygeneration must include 't' and 'n'");
     }
-    const result = await keygen(GG18_KEYGEN_ADDR, params.t, params.n, delay);
+    const result = await keygen(GG18_KEYGEN_ADDR, params.t, params.n, delay, token);
     console.log("Key generation result:", result);
 
     // PUTで結果を永続化
@@ -93,7 +99,7 @@ async function processKeyGeneration(task, params, delay) {
  * 2. 管理サーバーから generated_user_key を取得
  * 3. sign の実行
  */
-async function processSigning(task, params, delay) {
+async function processSigning(task, params, delay, token) {
     if (!("t" in params) || !("n" in params) || !("message" in params)) {
         throw new Error("Parameters for signing must include 't', 'n', and 'message'");
     }
@@ -116,7 +122,7 @@ async function processSigning(task, params, delay) {
     if (!("key_data" in keyData)) {
         throw new Error("Generated user key JSON does not contain 'key_data'");
     }
-    const result = await sign(GG18_SIGN_ADDR, params.t, params.n, params.message, keyData.key_data, delay);
+    const result = await sign(GG18_SIGN_ADDR, params.t, params.n, params.message, keyData.key_data, delay, token);
     console.log("Signing result:", result);
 }
 
@@ -173,13 +179,13 @@ async function getTask(taskId) {
  * 4. 正常／異常に応じたタスクステータスのPATCH更新
  */
 async function main() {
-    // コマンドライン引数から taskId を取得
     const args = process.argv.slice(2);
-    if (args.length !== 1) {
-        console.error("Usage: node server_side_party.js <taskId>");
+    if (args.length !== 2) {
+        console.error("Usage: node server_side_party.js <taskId> <token>");
         process.exit(1);
     }
     const taskId = args[0];
+    const token = args[1];
     const task = await getTask(taskId);
 
     if (!task) {
@@ -215,9 +221,9 @@ async function main() {
     try {
         await patchTaskStatus(taskId, "processing");
         if (task.type === "keygeneration") {
-            await processKeyGeneration(task, params, delay);
+            await processKeyGeneration(task, params, delay, token);
         } else if (task.type === "signing") {
-            await processSigning(task, params, delay);
+            await processSigning(task, params, delay, token);
         } else {
             throw new Error(`Unknown task type: ${task.type}`);
         }

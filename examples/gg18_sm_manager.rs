@@ -177,6 +177,7 @@ async fn signup_keygen(
     let _child = tokio::process::Command::new("node")
         .arg("./../server_side_party.js")
         .arg(task_id)
+        .arg(_auth.0)
         .spawn()
         .map_err(|_| Status::ServiceUnavailable)?;
 
@@ -230,6 +231,7 @@ async fn signup_sign(
     let _output = tokio::process::Command::new("node")
         .arg("./../scripts/server_side_party.js")
         .arg(task_id)
+        .arg(_auth.0)
         .spawn()
         .map_err(|_| Status::ServiceUnavailable)?;
     Ok(Json(party_signup))
