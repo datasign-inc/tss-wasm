@@ -6,7 +6,12 @@ const gg18 = require('../pkg');
 
 const GG18_KEYGEN_ADDR = "http://localhost:8000";
 const GG18_SIGN_ADDR = "http://localhost:8000";
-const MGT_SERVER_ADDR = "http://localhost:3000"
+const MGT_SERVER_ADDR = "http://localhost:3000";
+
+// MGT_SERVER_ADDRとパス部分を結合するヘルパー関数
+function buildManagementServerUrl(path) {
+    return `${MGT_SERVER_ADDR}${path}`;
+}
 
 /**
  * 既存の keygen 実装
@@ -71,7 +76,7 @@ async function processKeyGeneration(task, params, delay) {
     console.log("Key generation result:", result);
 
     // PUTで結果を永続化
-    const putUrl = `http://localhost:3000/internal/generated_user_key/${task.created_by}`;
+    const putUrl = buildManagementServerUrl(`/internal/generated_user_key/${task.created_by}`);
     const putResponse = await fetch(putUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -92,7 +97,7 @@ async function processSigning(task, params, delay) {
     if (!("t" in params) || !("n" in params) || !("message" in params)) {
         throw new Error("Parameters for signing must include 't', 'n', and 'message'");
     }
-    const keyUrl = `http://localhost:3000/internal/generated_user_key/${task.created_by}`;
+    const keyUrl = buildManagementServerUrl(`/internal/generated_user_key/${task.created_by}`);
     let keyResponse;
     try {
         keyResponse = await fetch(keyUrl);
@@ -120,7 +125,7 @@ async function processSigning(task, params, delay) {
  * PATCH先: /internal/tasks/{taskId}/status
  */
 async function patchTaskStatus(taskId, status) {
-    const patchUrl = `http://localhost:3000/internal/tasks/${taskId}/status`;
+    const patchUrl = buildManagementServerUrl(`/internal/tasks/${taskId}/status`);
     const response = await fetch(patchUrl, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -135,7 +140,7 @@ async function patchTaskStatus(taskId, status) {
 
 async function getTask(taskId) {
     // 管理サーバーから task 情報を取得
-    const taskUrl = `http://localhost:3000/internal/tasks/${taskId}`;
+    const taskUrl = buildManagementServerUrl(`/internal/tasks/${taskId}`);
     let response;
     try {
         response = await fetch(taskUrl);
@@ -152,7 +157,7 @@ async function getTask(taskId) {
     let task;
     try {
         task = await response.json();
-        return task
+        return task;
     } catch (err) {
         console.error("Failed to parse task JSON:", err);
         await patchTaskStatus(taskId, "failed");
