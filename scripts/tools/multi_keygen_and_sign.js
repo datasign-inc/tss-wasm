@@ -1,4 +1,4 @@
-const gg18 = require('../pkg')
+const gg18 = require('../../pkg')
 const ethers = require('ethers')
 
 var items = [{ idx: 0 }, { idx: 1 }, { idx: 2 }]

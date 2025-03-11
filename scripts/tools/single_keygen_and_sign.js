@@ -1,4 +1,4 @@
-const gg18 = require('../pkg')
+const gg18 = require('../../pkg')
 
 
 async function keygen(addr, t, n, delay) {

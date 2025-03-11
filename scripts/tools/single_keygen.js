@@ -1,4 +1,4 @@
-const gg18 = require('../pkg')
+const gg18 = require('../../pkg')
 async function keygen(addr, t, n, delay) {
     let context = await gg18.gg18_keygen_client_new_context(addr, t, n, delay)
     console.log('keygen new context: ')
