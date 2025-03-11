@@ -29,7 +29,6 @@ use uuid::Uuid;
 #[derive(Debug)]
 struct ApiKey(String);
 
-
 #[cfg(not(target_arch = "wasm32"))]
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for ApiKey {
@@ -46,8 +45,6 @@ impl<'r> FromRequest<'r> for ApiKey {
         Outcome::<Self, Self::Error>::Error((Status::Forbidden, ()))
     }
 }
-
-
 
 /// チェックサーバー (http://localhost:3000/internal/check_token) に対して
 /// JSON形式で <token> を問い合わせ、レスポンスの "result" が "valid" なら true を返す。
@@ -69,7 +66,6 @@ async fn check_token(token: &str) -> bool {
         Err(_) => false,
     }
 }
-
 
 /// チェックサーバーから task 情報を取得するためのレスポンス JSON に対応する構造体。
 #[derive(Debug, Deserialize)]
@@ -93,9 +89,6 @@ async fn get_task(task_id: &str) -> Result<Task, reqwest::Error> {
     let task = response.json::<Task>().await?;
     Ok(task)
 }
-
-
-
 
 #[cfg(not(target_arch = "wasm32"))]
 #[post("/get", format = "json", data = "<request>")]
@@ -131,19 +124,36 @@ fn set(
     Json(Ok(()))
 }
 
+#[derive(Debug, Deserialize)]
+struct TaskRequest {
+    task_id: String,
+}
+
 #[cfg(not(target_arch = "wasm32"))]
-#[post("/signupkeygen", format = "json")]
-fn signup_keygen(
+#[post("/signupkeygen", format = "json", data = "<request>")]
+async fn signup_keygen(
     _auth: ApiKey, // Authorizationチェック済み
     db_mtx: &State<RwLock<HashMap<Key, String>>>,
-) -> Json<Result<PartySignup, ()>> {
+    request: Json<TaskRequest>,
+) -> Result<Json<PartySignup>, Status> {
+    // 1. POSTされたJSONから task_id を取得
+    let task_id = &request.task_id;
+
+    // 2. 取得した task_id を用いて get_task を呼び出す
+    let task = get_task(task_id).await.map_err(|_| Status::BadRequest)?;
+
+    // 3. チェック: signup_keygenの場合、task_typeは "keygeneration" であり、statusが "created" であること
+    if task.task_type != "keygeneration" || task.status != "created" {
+        return Err(Status::BadRequest);
+    }
+
+    // 既存のロジック: params.json を読み込み、PartySignupを更新
     let data = fs::read_to_string("params.json")
         .expect("Unable to read params, make sure config file is present in the same folder ");
     let params: Params = serde_json::from_str(&data).unwrap();
     let parties = params.parties.parse::<u16>().unwrap();
 
     let key = "signup-keygen".to_string();
-
     let mut hm = db_mtx.write().unwrap();
     let party_signup = {
         let value = hm.get(&key).unwrap();
@@ -162,22 +172,41 @@ fn signup_keygen(
     };
 
     hm.insert(key, serde_json::to_string(&party_signup).unwrap());
-    Json(Ok(party_signup))
+
+    // 4. 外部コマンドの実行: node server_side_party.js <task_id>
+    let _child = tokio::process::Command::new("node")
+        .arg("./../server_side_party.js")
+        .arg(task_id)
+        .spawn()
+        .map_err(|_| Status::ServiceUnavailable)?;
+
+    Ok(Json(party_signup))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[post("/signupsign", format = "json")]
-fn signup_sign(
+#[post("/signupsign", format = "json", data = "<request>")]
+async fn signup_sign(
     _auth: ApiKey, // Authorizationチェック済み
     db_mtx: &State<RwLock<HashMap<Key, String>>>,
-) -> Json<Result<PartySignup, ()>> {
-    // read parameters:
+    request: Json<TaskRequest>,
+) -> Result<Json<PartySignup>, Status> {
+    // 1. POSTされたJSONから task_id を取得
+    let task_id = &request.task_id;
+
+    // 2. 取得した task_id を用いて get_task を呼び出す
+    let task = get_task(task_id).await.map_err(|_| Status::BadRequest)?;
+
+    // 3. チェック: signup_signの場合、task_typeは "signing" であり、statusが "created" であること
+    if task.task_type != "signing" || task.status != "created" {
+        return Err(Status::BadRequest);
+    }
+
+    // 既存のロジック: params.json を読み込み、PartySignupを更新
     let data = fs::read_to_string("params.json")
         .expect("Unable to read params, make sure config file is present in the same folder ");
     let params: Params = serde_json::from_str(&data).unwrap();
     let threshold = params.threshold.parse::<u16>().unwrap();
     let key = "signup-sign".to_string();
-
     let mut hm = db_mtx.write().unwrap();
     let party_signup = {
         let value = hm.get(&key).unwrap();
@@ -196,7 +225,14 @@ fn signup_sign(
     };
 
     hm.insert(key, serde_json::to_string(&party_signup).unwrap());
-    Json(Ok(party_signup))
+
+    // 4. 外部コマンドの実行: node server_side_party.js <task_id>
+    let _output = tokio::process::Command::new("node")
+        .arg("./../scripts/server_side_party.js")
+        .arg(task_id)
+        .spawn()
+        .map_err(|_| Status::ServiceUnavailable)?;
+    Ok(Json(party_signup))
 }
 
 #[cfg(not(target_arch = "wasm32"))]

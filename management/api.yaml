@@ -230,7 +230,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-
+    get:
+      tags:
+        - Internal
+      summary: generated_user_key の取得
+      description: >
+        指定された user_id の generated_user_key を取得します。
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+          description: ユーザーID（usersテーブルのID）
+      responses:
+        '200':
+          description: generated_user_key が取得されました。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        '400':
+          description: リクエストパラメータが不足または不正です。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '404':
+          description: 指定された generated_user_key が存在しません。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: データベースエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /internal/check_token:
     post:
       tags:
