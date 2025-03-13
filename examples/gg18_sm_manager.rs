@@ -30,6 +30,11 @@ use uuid::Uuid;
 struct ApiKey(String);
 
 #[cfg(not(target_arch = "wasm32"))]
+const SERVER_BASE: &str = "http://localhost:3000";
+#[cfg(not(target_arch = "wasm32"))]
+const SERVER_SIDE_SCRIPT: &str = "./../scripts/server_side_party.js";
+
+#[cfg(not(target_arch = "wasm32"))]
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for ApiKey {
     type Error = ();
@@ -46,14 +51,15 @@ impl<'r> FromRequest<'r> for ApiKey {
     }
 }
 
-/// チェックサーバー (http://localhost:3000/internal/check_token) に対して
+/// チェックサーバー (<SERVER_BASE>/internal/check_token) に対して
 /// JSON形式で <token> を問い合わせ、レスポンスの "result" が "valid" なら true を返す。
 #[cfg(not(target_arch = "wasm32"))]
 async fn check_token(token: &str) -> bool {
     let client = reqwest::Client::new();
     let body = serde_json::json!({ "token": token });
+    let url = format!("{}/internal/check_token", SERVER_BASE);
     let response = client
-        .post("http://localhost:3000/internal/check_token")
+        .post(&url)
         .json(&body)
         .send()
         .await;
@@ -79,11 +85,11 @@ struct Task {
     created_by: String,
 }
 
-/// 指定された taskId を元に、 http://localhost:3000/internal/tasks/{taskId} にアクセスし、
+/// 指定された taskId を元に、 <SERVER_BASE>/internal/tasks/{taskId} にアクセスし、
 /// JSON をパースして Task 型として返却する関数。
 #[cfg(not(target_arch = "wasm32"))]
 async fn get_task(task_id: &str) -> Result<Task, reqwest::Error> {
-    let url = format!("http://localhost:3000/internal/tasks/{}", task_id);
+    let url = format!("{}/internal/tasks/{}", SERVER_BASE, task_id);
     let client = reqwest::Client::new();
     let response = client.get(&url).send().await?;
     let task = response.json::<Task>().await?;
@@ -173,9 +179,9 @@ async fn signup_keygen(
 
     hm.insert(key, serde_json::to_string(&party_signup).unwrap());
 
-    // 4. 外部コマンドの実行: node server_side_party.js <task_id>
+    // 4. 外部コマンドの実行: node <SERVER_SIDE_SCRIPT> <task_id>
     let _child = tokio::process::Command::new("node")
-        .arg("./../server_side_party.js")
+        .arg(SERVER_SIDE_SCRIPT)
         .arg(task_id)
         .arg(_auth.0)
         .spawn()
@@ -227,9 +233,9 @@ async fn signup_sign(
 
     hm.insert(key, serde_json::to_string(&party_signup).unwrap());
 
-    // 4. 外部コマンドの実行: node server_side_party.js <task_id>
+    // 4. 外部コマンドの実行: node <SERVER_SIDE_SCRIPT> <task_id>
     let _output = tokio::process::Command::new("node")
-        .arg("./../scripts/server_side_party.js")
+        .arg(SERVER_SIDE_SCRIPT)
         .arg(task_id)
         .arg(_auth.0)
         .spawn()
