@@ -55,6 +55,13 @@ pub struct Params {
     pub threshold: String,
 }
 
+
+#[derive(Debug, serde_derive::Deserialize, serde_derive::Serialize)]
+pub struct TaskRequest {
+    pub task_id: String,
+    pub party_type: String
+}
+
 #[allow(dead_code)]
 pub fn aes_encrypt(key: &[u8], plaintext: &[u8]) -> Result<AEAD> {
     let aes_key = aes_gcm::Key::from_slice(key);

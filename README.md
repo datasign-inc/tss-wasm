@@ -30,7 +30,7 @@ npm run build_node
 
 ---
 
-# オリジナルのREADME
+# 以下、オリジナルのREADME
 
 ## TSS WASM
 A portable lightweight client application for threshold ECDSA (based on [GG18](https://eprint.iacr.org/2019/114.pdf)), built on&for [multi-party-ecdsa](https://github.com/ZenGo-X/multi-party-ecdsa) : 

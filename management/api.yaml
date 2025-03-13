@@ -70,13 +70,15 @@ paths:
                 value:
                   type: "keygeneration"
                   parameters:
-                    threshold: 1
-                    party: 3
-              sign:
+                    t: 1
+                    n: 3
+              signing:
                 summary: signタスク例
                 value:
-                  type: "sign"
+                  type: "signing"
                   parameters:
+                    t: 1
+                    n: 3
                     message: "hello"
       responses:
         '200':
@@ -345,8 +347,6 @@ components:
     TaskCreationResponse:
       type: object
       properties:
-        message:
-          type: string
         taskId:
           type: string
           description: 登録されたタスクのUUID

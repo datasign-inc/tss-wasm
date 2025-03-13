@@ -21,7 +21,7 @@ use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::RwLock;
 #[cfg(not(target_arch = "wasm32"))]
-use tss_wasm::common::{Entry, Index, Key, Params, PartySignup};
+use tss_wasm::common::{Entry, Index, Key, Params, PartySignup, TaskRequest};
 #[cfg(not(target_arch = "wasm32"))]
 use uuid::Uuid;
 
@@ -32,7 +32,7 @@ struct ApiKey(String);
 #[cfg(not(target_arch = "wasm32"))]
 const SERVER_BASE: &str = "http://localhost:3000";
 #[cfg(not(target_arch = "wasm32"))]
-const SERVER_SIDE_SCRIPT: &str = "./../scripts/server_side_party.js";
+const SERVER_SIDE_SCRIPT: &str = "./scripts/server_side_party.js";
 
 #[cfg(not(target_arch = "wasm32"))]
 #[rocket::async_trait]
@@ -58,11 +58,7 @@ async fn check_token(token: &str) -> bool {
     let client = reqwest::Client::new();
     let body = serde_json::json!({ "token": token });
     let url = format!("{}/internal/check_token", SERVER_BASE);
-    let response = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await;
+    let response = client.post(&url).json(&body).send().await;
 
     match response {
         Ok(resp) => {
@@ -130,11 +126,6 @@ fn set(
     Json(Ok(()))
 }
 
-#[derive(Debug, Deserialize)]
-struct TaskRequest {
-    task_id: String,
-}
-
 #[cfg(not(target_arch = "wasm32"))]
 #[post("/signupkeygen", format = "json", data = "<request>")]
 async fn signup_keygen(
@@ -144,6 +135,11 @@ async fn signup_keygen(
 ) -> Result<Json<PartySignup>, Status> {
     // 1. POSTされたJSONから task_id を取得
     let task_id = &request.task_id;
+    let party_type = &request.party_type;
+
+    if party_type != "wallet_side" && party_type != "server_side" {
+        return Err(Status::BadRequest);
+    }
 
     // 2. 取得した task_id を用いて get_task を呼び出す
     let task = get_task(task_id).await.map_err(|_| Status::BadRequest)?;
@@ -179,13 +175,14 @@ async fn signup_keygen(
 
     hm.insert(key, serde_json::to_string(&party_signup).unwrap());
 
-    // 4. 外部コマンドの実行: node <SERVER_SIDE_SCRIPT> <task_id>
-    let _child = tokio::process::Command::new("node")
-        .arg(SERVER_SIDE_SCRIPT)
-        .arg(task_id)
-        .arg(_auth.0)
-        .spawn()
-        .map_err(|_| Status::ServiceUnavailable)?;
+    if (party_type == "wallet_side") {
+        let _child = tokio::process::Command::new("node")
+            .arg(SERVER_SIDE_SCRIPT)
+            .arg(task_id)
+            .arg(_auth.0)
+            .spawn()
+            .map_err(|_| Status::ServiceUnavailable)?;
+    }
 
     Ok(Json(party_signup))
 }
@@ -202,6 +199,11 @@ async fn signup_sign(
 
     // 2. 取得した task_id を用いて get_task を呼び出す
     let task = get_task(task_id).await.map_err(|_| Status::BadRequest)?;
+    let party_type = &request.party_type;
+
+    if party_type != "wallet_side" && party_type != "server_side" {
+        return Err(Status::BadRequest);
+    }
 
     // 3. チェック: signup_signの場合、task_typeは "signing" であり、statusが "created" であること
     if task.task_type != "signing" || task.status != "created" {
@@ -233,13 +235,15 @@ async fn signup_sign(
 
     hm.insert(key, serde_json::to_string(&party_signup).unwrap());
 
-    // 4. 外部コマンドの実行: node <SERVER_SIDE_SCRIPT> <task_id>
-    let _output = tokio::process::Command::new("node")
-        .arg(SERVER_SIDE_SCRIPT)
-        .arg(task_id)
-        .arg(_auth.0)
-        .spawn()
-        .map_err(|_| Status::ServiceUnavailable)?;
+    if (party_type == "wallet_side") {
+        let _output = tokio::process::Command::new("node")
+            .arg(SERVER_SIDE_SCRIPT)
+            .arg(task_id)
+            .arg(_auth.0)
+            .spawn()
+            .map_err(|_| Status::ServiceUnavailable)?;
+    }
+
     Ok(Json(party_signup))
 }
 

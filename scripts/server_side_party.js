@@ -16,21 +16,21 @@ function buildManagementServerUrl(path) {
 /**
  * 既存の keygen 実装
  */
-async function keygen(addr, t, n, delay, token) {
+async function keygen(addr, t, n, delay, token, taskId) {
 
     // todo: send `token` to GG18 server
 
-    let context = await gg18.gg18_keygen_client_new_context(addr, t, n, delay);
+    let context = await gg18.gg18_keygen_client_new_context(addr, t, n, delay, token, taskId, "server_side");
     console.log('keygen new context: ', context);
-    context = await gg18.gg18_keygen_client_round1(context, delay);
+    context = await gg18.gg18_keygen_client_round1(context, delay, token);
     console.log('keygen round1: ', context);
-    context = await gg18.gg18_keygen_client_round2(context, delay);
+    context = await gg18.gg18_keygen_client_round2(context, delay, token);
     console.log('keygen round2: ', context);
-    context = await gg18.gg18_keygen_client_round3(context, delay);
+    context = await gg18.gg18_keygen_client_round3(context, delay, token);
     console.log('keygen round3: ', context);
-    context = await gg18.gg18_keygen_client_round4(context, delay);
+    context = await gg18.gg18_keygen_client_round4(context, delay, token);
     console.log('keygen round4: ', context);
-    let keygen_json = await gg18.gg18_keygen_client_round5(context, delay);
+    let keygen_json = await gg18.gg18_keygen_client_round5(context, delay, token);
     console.log('keygen json: ', keygen_json);
     return keygen_json;
 }
@@ -38,32 +38,32 @@ async function keygen(addr, t, n, delay, token) {
 /**
  * 既存の sign 実装
  */
-async function sign(addr, t, n, message, key_store, delay, token) {
+async function sign(addr, t, n, message, key_store, delay, token, task_id) {
 
     // todo: send `token` to GG18 server
 
     console.log(`creating signature for : ${message}`);
-    let context = await gg18.gg18_sign_client_new_context(addr, t, n, key_store, message);
+    let context = await gg18.gg18_sign_client_new_context(addr, t, n, key_store, message, token, task_id, "server_side");
     console.log('sign new context: ', context);
-    context = await gg18.gg18_sign_client_round0(context, delay);
+    context = await gg18.gg18_sign_client_round0(context, delay, token);
     console.log('sign round0: ', context);
-    context = await gg18.gg18_sign_client_round1(context, delay);
+    context = await gg18.gg18_sign_client_round1(context, delay, token);
     console.log('sign round1: ', context);
-    context = await gg18.gg18_sign_client_round2(context, delay);
+    context = await gg18.gg18_sign_client_round2(context, delay, token);
     console.log('sign round2: ', context);
-    context = await gg18.gg18_sign_client_round3(context, delay);
+    context = await gg18.gg18_sign_client_round3(context, delay, token);
     console.log('sign round3: ', context);
-    context = await gg18.gg18_sign_client_round4(context, delay);
+    context = await gg18.gg18_sign_client_round4(context, delay, token);
     console.log('sign round4: ', context);
-    context = await gg18.gg18_sign_client_round5(context, delay);
+    context = await gg18.gg18_sign_client_round5(context, delay, token);
     console.log('sign round5: ', context);
-    context = await gg18.gg18_sign_client_round6(context, delay);
+    context = await gg18.gg18_sign_client_round6(context, delay, token);
     console.log('sign round6: ', context);
-    context = await gg18.gg18_sign_client_round7(context, delay);
+    context = await gg18.gg18_sign_client_round7(context, delay, token);
     console.log('sign round7: ', context);
-    context = await gg18.gg18_sign_client_round8(context, delay);
+    context = await gg18.gg18_sign_client_round8(context, delay, token);
     console.log('sign round8: ', context);
-    let sign_json = await gg18.gg18_sign_client_round9(context, delay);
+    let sign_json = await gg18.gg18_sign_client_round9(context, delay, token);
     console.log('keysign json: ', sign_json);
     return sign_json;
 }
@@ -78,7 +78,7 @@ async function processKeyGeneration(task, params, delay, token) {
     if (!("t" in params) || !("n" in params)) {
         throw new Error("Parameters for keygeneration must include 't' and 'n'");
     }
-    const result = await keygen(GG18_KEYGEN_ADDR, params.t, params.n, delay, token);
+    const result = await keygen(GG18_KEYGEN_ADDR, params.t, params.n, delay, token, task.id);
     console.log("Key generation result:", result);
 
     // PUTで結果を永続化
@@ -122,7 +122,7 @@ async function processSigning(task, params, delay, token) {
     if (!("key_data" in keyData)) {
         throw new Error("Generated user key JSON does not contain 'key_data'");
     }
-    const result = await sign(GG18_SIGN_ADDR, params.t, params.n, params.message, keyData.key_data, delay, token);
+    const result = await sign(GG18_SIGN_ADDR, params.t, params.n, params.message, keyData.key_data, delay, token, task.id);
     console.log("Signing result:", result);
 }
 

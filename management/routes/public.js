@@ -30,7 +30,7 @@ router.post('/login', async (ctx) => {
         const token = jwt.sign(
             { id: user.id, username: user.username },
             SECRET_KEY,
-            { algorithm: 'HS256', expiresIn: '5m' }
+            { algorithm: 'HS256', expiresIn: '120m' }
         );
         ctx.body = { token };
     } catch (err) {
