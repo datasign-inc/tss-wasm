@@ -8,3 +8,4 @@ package-lock.json
 pkg
 Cargo.lock
 /database.sqlite
+management/database.sqlite
