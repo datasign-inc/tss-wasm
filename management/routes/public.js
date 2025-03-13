@@ -50,7 +50,7 @@ router.post('/tasks', checkAuthHeader, async (ctx) => {
     const nowUTC = new Date().toISOString();
     try {
         const taskId = await dbAPI.insertTask(task.type, task.parameters, "created", nowUTC, ctx.state.user.id);
-        ctx.body = { message: 'タスクが登録されました', taskId };
+        ctx.body = { task_id: taskId };
     } catch (err) {
         ctx.status = 500;
         ctx.body = { error: 'データベースエラー' };
