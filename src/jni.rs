@@ -22,6 +22,7 @@ macro_rules! jni_round_wrapper {
             _class: JClass,
             jcontext: JString,
             jdelay: jint,
+            jtoken: JString,
         ) -> jstring {
             // JString を Rust の String に変換
             let context: String = env
@@ -29,9 +30,13 @@ macro_rules! jni_round_wrapper {
                 .expect("Invalid context string")
                 .into();
             let delay: u32 = jdelay as u32;
+            let token: String = env
+                .get_string(&jtoken)
+                .expect("Invalid token string")
+                .into();
 
             let rt = Runtime::new().unwrap();
-            match rt.block_on($rust_fn(context, delay)) {
+            match rt.block_on($rust_fn(context, delay, token)) {
                 Ok(result_str) => env
                     .new_string(result_str)
                     .expect("Couldn't create java string")
@@ -47,13 +52,14 @@ macro_rules! jni_round_wrapper {
 
 /// JNIラッパー: com.example.myapplication2.MultiPartyECDSA.gg18KeygenClientNewContext(String, int, int, int)
 #[no_mangle]
-pub extern "system" fn Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientNewContext(
+pub extern "system" fn Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientNewContext(
     mut env: JNIEnv,
     _class: JClass,
     jaddr: JString,
     jt: jint,
     jn: jint,
     jdelay: jint,
+    jtoken: JString
 ) -> jstring {
     // JStringをRustのStringに変換
     let addr: String = env
@@ -63,11 +69,15 @@ pub extern "system" fn Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18Raw
     let t: usize = jt as usize;
     let n: usize = jn as usize;
     let delay: u32 = jdelay as u32;
+    let token: String = env
+        .get_string(&jtoken)
+        .expect("Invalid token string")
+        .into();
 
     let rt = Runtime::new().unwrap();
 
     // Rustの関数を呼び出す
-    match rt.block_on(gg18_keygen_client_new_context(addr, t, n, delay)) {
+    match rt.block_on(gg18_keygen_client_new_context(addr, t, n, delay, token)) {
         Ok(result_str) => {
             // 結果文字列をJStringに変換して返す
             env.new_string(result_str)
@@ -84,7 +94,7 @@ pub extern "system" fn Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18Raw
 
 /// JNIラッパー: com.example.myapplication2.MultiPartyECDSA.gg18SignClientNewContext(String, int, int, String, String)
 #[no_mangle]
-pub extern "system" fn Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientNewContext(
+pub extern "system" fn Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientNewContext(
     mut env: JNIEnv,
     _class: JClass,
     jaddr: JString,
@@ -92,6 +102,7 @@ pub extern "system" fn Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18Raw
     jn: jint,
     jkey_store: JString,
     jmessage: JString,
+    jtoken: JString,
 ) -> jstring {
     // 各JStringをRustのStringに変換
     let addr: String = env
@@ -108,11 +119,14 @@ pub extern "system" fn Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18Raw
         .get_string(&jmessage)
         .expect("Invalid message string")
         .into();
-
+    let token: String = env
+        .get_string(&jtoken)
+        .expect("Invalid token string")
+        .into();
     let rt = Runtime::new().unwrap();
 
     // Rustの関数を呼び出す
-    match rt.block_on(gg18_sign_client_new_context(addr, t, n, key_store, message)) {
+    match rt.block_on(gg18_sign_client_new_context(addr, t, n, key_store, message, token)) {
         Ok(result_str) => {
             // 結果文字列をJStringに変換して返す
             env.new_string(result_str)
@@ -129,64 +143,64 @@ pub extern "system" fn Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18Raw
 
 // キー生成系ラッパー関数
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientRound1,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientRound1,
     gg18_keygen_client_round1
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientRound2,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientRound2,
     gg18_keygen_client_round2
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientRound3,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientRound3,
     gg18_keygen_client_round3
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientRound4,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientRound4,
     gg18_keygen_client_round4
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientRound5,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18KeygenClientRound5,
     gg18_keygen_client_round5
 );
 
 // 署名系ラッパー関数
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound0,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound0,
     gg18_sign_client_round0
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound1,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound1,
     gg18_sign_client_round1
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound2,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound2,
     gg18_sign_client_round2
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound3,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound3,
     gg18_sign_client_round3
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound4,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound4,
     gg18_sign_client_round4
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound5,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound5,
     gg18_sign_client_round5
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound6,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound6,
     gg18_sign_client_round6
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound7,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound7,
     gg18_sign_client_round7
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound8,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound8,
     gg18_sign_client_round8
 );
 jni_round_wrapper!(
-    Java_jp_datasign_bunsin_1wallet_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound9,
+    Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1ecdsa_GG18RawInterface_gg18SignClientRound9,
     gg18_sign_client_round9
 );
