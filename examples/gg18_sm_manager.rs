@@ -142,13 +142,16 @@ async fn signup_keygen(
     }
 
     // 2. 取得した task_id を用いて get_task を呼び出す
-    let task = get_task(task_id).await.map_err(|_| Status::BadRequest)?;
-
-    if task.task_type != "keygeneration" {
+    let task = get_task(task_id).await.map_err(|_| ());
+    if task.is_err(){
         return Json(Err(()));
     }
 
-    if task.status != "created" && task.status != "processing" {
+    let task_value = task.unwrap();
+    if task_value.task_type != "keygeneration" {
+        return Json(Err(()));
+    }
+    if task_value.status != "created" && task_value.status != "processing" {
         return Json(Err(()));
     }
 
@@ -184,7 +187,7 @@ async fn signup_keygen(
             .arg(task_id)
             .arg(_auth.0)
             .spawn()
-            .map_err(|_| Status::ServiceUnavailable)?;
+            .map_err(|_| ());
     }
 
     Json(Ok(party_signup))
@@ -201,19 +204,24 @@ async fn signup_sign(
     let task_id = &request.task_id;
 
     // 2. 取得した task_id を用いて get_task を呼び出す
-    let task = get_task(task_id).await.map_err(|_| Status::BadRequest)?;
+    let task = get_task(task_id).await.map_err(|_| ());
     let party_type = &request.party_type;
 
     if party_type != "wallet_side" && party_type != "server_side" {
         return Json(Err(()));
     }
 
-    // 3. チェック: signup_signの場合、task_typeは "signing" であり、statusが "created" であること
-    if task.task_type != "signing" {
+    if task.is_err() {
         return Json(Err(()));
     }
 
-    if task.status != "created" && task.status != "processing" {
+    let task_value = task.unwrap();
+    // 3. チェック: signup_signの場合、task_typeは "signing" であり、statusが "created" であること
+    if task_value.task_type != "signing" {
+        return Json(Err(()));
+    }
+
+    if task_value.status != "created" && task_value.status != "processing" {
         return Json(Err(()));
     }
 
@@ -248,7 +256,7 @@ async fn signup_sign(
             .arg(task_id)
             .arg(_auth.0)
             .spawn()
-            .map_err(|_| Status::ServiceUnavailable)?;
+            .map_err(|_| ());
     }
 
     Json(Ok(party_signup))
