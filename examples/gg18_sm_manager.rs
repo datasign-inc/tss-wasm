@@ -132,21 +132,24 @@ async fn signup_keygen(
     _auth: ApiKey, // Authorizationチェック済み
     db_mtx: &State<RwLock<HashMap<Key, String>>>,
     request: Json<TaskRequest>,
-) -> Result<Json<PartySignup>, Status> {
+) -> Json<Result<PartySignup, ()>> {
     // 1. POSTされたJSONから task_id を取得
     let task_id = &request.task_id;
     let party_type = &request.party_type;
 
     if party_type != "wallet_side" && party_type != "server_side" {
-        return Err(Status::BadRequest);
+        return Json(Err(()));
     }
 
     // 2. 取得した task_id を用いて get_task を呼び出す
     let task = get_task(task_id).await.map_err(|_| Status::BadRequest)?;
 
-    // 3. チェック: signup_keygenの場合、task_typeは "keygeneration" であり、statusが "created" であること
-    if task.task_type != "keygeneration" || task.status != "created" {
-        return Err(Status::BadRequest);
+    if task.task_type != "keygeneration" {
+        return Json(Err(()));
+    }
+
+    if task.status != "created" && task.status != "processing" {
+        return Json(Err(()));
     }
 
     // 既存のロジック: params.json を読み込み、PartySignupを更新
@@ -184,7 +187,7 @@ async fn signup_keygen(
             .map_err(|_| Status::ServiceUnavailable)?;
     }
 
-    Ok(Json(party_signup))
+    Json(Ok(party_signup))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -193,7 +196,7 @@ async fn signup_sign(
     _auth: ApiKey, // Authorizationチェック済み
     db_mtx: &State<RwLock<HashMap<Key, String>>>,
     request: Json<TaskRequest>,
-) -> Result<Json<PartySignup>, Status> {
+) -> Json<Result<PartySignup, ()>> {
     // 1. POSTされたJSONから task_id を取得
     let task_id = &request.task_id;
 
@@ -202,12 +205,16 @@ async fn signup_sign(
     let party_type = &request.party_type;
 
     if party_type != "wallet_side" && party_type != "server_side" {
-        return Err(Status::BadRequest);
+        return Json(Err(()));
     }
 
     // 3. チェック: signup_signの場合、task_typeは "signing" であり、statusが "created" であること
-    if task.task_type != "signing" || task.status != "created" {
-        return Err(Status::BadRequest);
+    if task.task_type != "signing" {
+        return Json(Err(()));
+    }
+
+    if task.status != "created" && task.status != "processing" {
+        return Json(Err(()));
     }
 
     // 既存のロジック: params.json を読み込み、PartySignupを更新
@@ -244,7 +251,7 @@ async fn signup_sign(
             .map_err(|_| Status::ServiceUnavailable)?;
     }
 
-    Ok(Json(party_signup))
+    Json(Ok(party_signup))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
