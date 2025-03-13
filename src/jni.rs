@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 use crate::api::{
     gg18_keygen_client_new_context, gg18_keygen_client_round1, gg18_keygen_client_round2,
     gg18_keygen_client_round3, gg18_keygen_client_round4, gg18_keygen_client_round5,
