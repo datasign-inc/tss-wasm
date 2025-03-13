@@ -17,10 +17,11 @@ cargo build --examples --release
 ## libtss_wasm.so
 
 ビルド
+※ Android Studioを用いて、予めNDKがインストールされていることが前提
 ```shell
 cargo ndk -t arm64-v8a build --release
+ls ./target/aarch64-linux-android/release/libtss_wasm.so
 ```
-※ Android Studioを用いて、予めNDKがインストールされていることが前提
 
 ## JS向けのpkg
 
