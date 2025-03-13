@@ -70,7 +70,8 @@ pub async fn gg18_keygen_client_new_context(
     t: usize,
     n: usize,
     _delay: u32,
-    token: String
+    token: String,
+    taskId: String
 ) -> Result<String> {
     let client = new_client_with_headers(&token)?;
     let params = Parameters {
@@ -78,7 +79,7 @@ pub async fn gg18_keygen_client_new_context(
         share_count: n,
     };
 
-    let (party_num_int, uuid) = match signup_keygen(&client, &addr).await? {
+    let (party_num_int, uuid) = match signup_keygen(&client, &addr, &taskId).await? {
         PartySignup { number, uuid } => (number, uuid),
     };
 
@@ -444,15 +445,15 @@ pub async fn gg18_keygen_client_round5(context: String, delay: u32, token: Strin
     Ok(keygen_json)
 }
 
-pub async fn signup_keygen(client: &Client, addr: &str) -> Result<PartySignup> {
-    let key = "signup-keygen".to_string();
+pub async fn signup_keygen(client: &Client, addr: &str, taskId: &str) -> Result<PartySignup> {
+    let key = format!("{{\"task_id\": \"{}\"}}", taskId);
     let res_body = postb(client, addr, "signupkeygen", key).await?;
     let u: std::result::Result<PartySignup, ()> = serde_json::from_str(&res_body)?;
     Ok(u.unwrap())
 }
 
-pub async fn signup_sign(client: &Client, addr: &str) -> Result<PartySignup> {
-    let key = "signup-sign".to_string();
+pub async fn signup_sign(client: &Client, addr: &str, taskId: &str) -> Result<PartySignup> {
+    let key = format!("{{\"task_id\": \"{}\"}}", taskId);
     let res_body = postb(client, addr, "signupsign", key).await?;
     let u: std::result::Result<PartySignup, ()> = serde_json::from_str(&res_body)?;
     Ok(u.unwrap())
@@ -508,7 +509,8 @@ pub async fn gg18_sign_client_new_context(
     _n: usize,
     key_store: String,
     message_str: String,
-    token: String
+    token: String,
+    taskId: String
 ) -> Result<String> {
     let message = match hex::decode(message_str.clone()) {
         Ok(x) => x,
@@ -527,7 +529,7 @@ pub async fn gg18_sign_client_new_context(
     ) = serde_json::from_str(&key_store)?;
 
     //signup:
-    let (party_num_int, uuid) = match signup_sign(&client, &addr).await? {
+    let (party_num_int, uuid) = match signup_sign(&client, &addr, &taskId).await? {
         PartySignup { number, uuid } => (number, uuid),
     };
 

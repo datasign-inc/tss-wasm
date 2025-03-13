@@ -61,7 +61,8 @@ pub extern "system" fn Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1
     jt: jint,
     jn: jint,
     jdelay: jint,
-    jtoken: JString
+    jtoken: JString,
+    jtaskid: JString
 ) -> jstring {
     // JStringをRustのStringに変換
     let addr: String = env
@@ -75,11 +76,15 @@ pub extern "system" fn Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1
         .get_string(&jtoken)
         .expect("Invalid token string")
         .into();
+     let taskId: String = env
+         .get_string(&jtaskid)
+         .expect("Invalid taskId string")
+         .into();
 
     let rt = Runtime::new().unwrap();
 
     // Rustの関数を呼び出す
-    match rt.block_on(gg18_keygen_client_new_context(addr, t, n, delay, token)) {
+    match rt.block_on(gg18_keygen_client_new_context(addr, t, n, delay, token, taskId)) {
         Ok(result_str) => {
             // 結果文字列をJStringに変換して返す
             env.new_string(result_str)
@@ -105,6 +110,7 @@ pub extern "system" fn Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1
     jkey_store: JString,
     jmessage: JString,
     jtoken: JString,
+    jtaskid: JString
 ) -> jstring {
     // 各JStringをRustのStringに変換
     let addr: String = env
@@ -125,10 +131,14 @@ pub extern "system" fn Java_jp_datasign_bunsin_1wallet_cryptography_multiparty_1
         .get_string(&jtoken)
         .expect("Invalid token string")
         .into();
+     let taskId: String = env
+         .get_string(&jtaskid)
+         .expect("Invalid taskId string")
+         .into();
     let rt = Runtime::new().unwrap();
 
     // Rustの関数を呼び出す
-    match rt.block_on(gg18_sign_client_new_context(addr, t, n, key_store, message, token)) {
+    match rt.block_on(gg18_sign_client_new_context(addr, t, n, key_store, message, token, taskId)) {
         Ok(result_str) => {
             // 結果文字列をJStringに変換して返す
             env.new_string(result_str)
