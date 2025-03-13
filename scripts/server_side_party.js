@@ -4,22 +4,18 @@ const fetch = global.fetch || require('node-fetch');
 
 const gg18 = require('../pkg');
 
-const GG18_KEYGEN_ADDR = "http://localhost:8000";
-const GG18_SIGN_ADDR = "http://localhost:8000";
-const MGT_SERVER_ADDR = "http://localhost:3000";
+const GG18_KEYGEN_ADDR = "http://192.168.10.17:8000";
+const GG18_SIGN_ADDR = "http://192.168.10.17:8000";
+const MGT_SERVER_ADDR = "http://192.168.10.17:3000";
 
 // MGT_SERVER_ADDRとパス部分を結合するヘルパー関数
 function buildManagementServerUrl(path) {
     return `${MGT_SERVER_ADDR}${path}`;
 }
 
-/**
- * 既存の keygen 実装
- */
+
 async function keygen(addr, t, n, delay, token, taskId) {
-
-    // todo: send `token` to GG18 server
-
+    console.log(`Executing key generation:  ${addr}:${t}:${n}:${delay}:${token}:${taskId}`);
     let context = await gg18.gg18_keygen_client_new_context(addr, t, n, delay, token, taskId, "server_side");
     console.log('keygen new context: ', context);
     context = await gg18.gg18_keygen_client_round1(context, delay, token);
@@ -35,13 +31,8 @@ async function keygen(addr, t, n, delay, token, taskId) {
     return keygen_json;
 }
 
-/**
- * 既存の sign 実装
- */
+
 async function sign(addr, t, n, message, key_store, delay, token, task_id) {
-
-    // todo: send `token` to GG18 server
-
     console.log(`creating signature for : ${message}`);
     let context = await gg18.gg18_sign_client_new_context(addr, t, n, key_store, message, token, task_id, "server_side");
     console.log('sign new context: ', context);
