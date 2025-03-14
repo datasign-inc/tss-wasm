@@ -29,6 +29,13 @@ ls ./target/aarch64-linux-android/release/libtss_wasm.so
 npm run build_node
 ```
 
+## 管理機能
+
+```shell
+cd ./management
+node server.js
+```
+
 ---
 
 # 以下、オリジナルのREADME
