@@ -21,5 +21,13 @@ module.exports = {
           TextEncoder: ['text-encoding', 'TextEncoder']
         })
     ],
-    mode: 'development'
+    mode: 'development',
+    module: {
+        rules: [
+            {
+                test: /\.wasm$/,
+                type: "webassembly/experimental",
+            },
+        ],
+    },
 };

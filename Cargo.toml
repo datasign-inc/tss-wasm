@@ -15,6 +15,9 @@ crate-type = ["cdylib", "lib"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rand = "0.6.5"
+jni = "0.21.1"
+tokio = { version = "1", features = ["full"] }
+openssl-sys = { version = "0.9.106", features = ["vendored"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2.51", features = ["serde-serialize"] }
@@ -36,7 +39,7 @@ cryptoxide = "0.1.1"
 zeroize = "1.0"
 
 libsecp256k1 = "0.3.2"
-reqwest = { version = "0.11.11", features = ["json"] }
+reqwest = { version = "0.11.11", features = ["json", "rustls-tls"], default-features = false}
 aes-gcm = "0.9.4"
 sha2 = "0.9"
 sha3 = "0.10.6"
@@ -50,6 +53,9 @@ js-sys = "0.3.59"
 tiny-keccak = { version = "2.0.1", features = ["keccak"] }
 log = "0.4.17"
 thiserror = "1.0"
+
+
+
 
 [dependencies.web-sys]
 version = "0.3.4"

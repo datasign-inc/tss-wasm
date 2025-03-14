@@ -1,13 +1,19 @@
-// #[cfg(not(target_arch = "wasm32"))]
-// use rocket::fairing::{Fairing, Info, Kind};
+#[cfg(not(target_arch = "wasm32"))]
+use reqwest;
+#[cfg(not(target_arch = "wasm32"))]
+use rocket::http::Status;
+#[cfg(not(target_arch = "wasm32"))]
+use rocket::request::{FromRequest, Outcome};
 #[cfg(not(target_arch = "wasm32"))]
 use rocket::serde::json::Json;
 #[cfg(not(target_arch = "wasm32"))]
+use rocket::Request;
+#[cfg(not(target_arch = "wasm32"))]
 use rocket::{post, routes, State};
-// #[cfg(not(target_arch = "wasm32"))]
-// use rocket::{Request, Response};
 #[cfg(not(target_arch = "wasm32"))]
 use rocket_cors::{AllowedOrigins, CorsOptions};
+#[cfg(not(target_arch = "wasm32"))]
+use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
@@ -15,13 +21,81 @@ use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::RwLock;
 #[cfg(not(target_arch = "wasm32"))]
-use tss_wasm::common::{Entry, Index, Key, Params, PartySignup};
+use tss_wasm::common::{Entry, Index, Key, Params, PartySignup, TaskRequest};
 #[cfg(not(target_arch = "wasm32"))]
 use uuid::Uuid;
 
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug)]
+struct ApiKey(String);
+
+#[cfg(not(target_arch = "wasm32"))]
+const SERVER_BASE: &str = "http://localhost:3000";
+#[cfg(not(target_arch = "wasm32"))]
+const SERVER_SIDE_SCRIPT: &str = "./scripts/server_side_party.js";
+
+#[cfg(not(target_arch = "wasm32"))]
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for ApiKey {
+    type Error = ();
+
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        if let Some(auth_header) = request.headers().get_one("Authorization") {
+            if let Some(token) = auth_header.strip_prefix("Bearer ") {
+                if check_token(token).await {
+                    return Outcome::Success(ApiKey(token.to_string()));
+                }
+            }
+        }
+        Outcome::<Self, Self::Error>::Error((Status::Forbidden, ()))
+    }
+}
+
+/// チェックサーバー (<SERVER_BASE>/internal/check_token) に対して
+/// JSON形式で <token> を問い合わせ、レスポンスの "result" が "valid" なら true を返す。
+#[cfg(not(target_arch = "wasm32"))]
+async fn check_token(token: &str) -> bool {
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({ "token": token });
+    let url = format!("{}/internal/check_token", SERVER_BASE);
+    let response = client.post(&url).json(&body).send().await;
+
+    match response {
+        Ok(resp) => {
+            let json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
+            json.get("result").map_or(false, |v| v == "valid")
+        }
+        Err(_) => false,
+    }
+}
+
+/// チェックサーバーから task 情報を取得するためのレスポンス JSON に対応する構造体。
+#[derive(Debug, Deserialize)]
+struct Task {
+    id: String,
+    #[serde(rename = "type")]
+    task_type: String,
+    parameters: String,
+    status: String,
+    created_at: String,
+    created_by: String,
+}
+
+/// 指定された taskId を元に、 <SERVER_BASE>/internal/tasks/{taskId} にアクセスし、
+/// JSON をパースして Task 型として返却する関数。
+#[cfg(not(target_arch = "wasm32"))]
+async fn get_task(task_id: &str) -> Result<Task, reqwest::Error> {
+    let url = format!("{}/internal/tasks/{}", SERVER_BASE, task_id);
+    let client = reqwest::Client::new();
+    let response = client.get(&url).send().await?;
+    let task = response.json::<Task>().await?;
+    Ok(task)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 #[post("/get", format = "json", data = "<request>")]
 fn get(
+    _auth: ApiKey, // Authorizationチェック済み
     db_mtx: &State<RwLock<HashMap<Key, String>>>,
     request: Json<Index>,
 ) -> Json<Result<Entry, ()>> {
@@ -41,7 +115,11 @@ fn get(
 
 #[cfg(not(target_arch = "wasm32"))]
 #[post("/set", format = "json", data = "<request>")]
-fn set(db_mtx: &State<RwLock<HashMap<Key, String>>>, request: Json<Entry>) -> Json<Result<(), ()>> {
+fn set(
+    _auth: ApiKey, // Authorizationチェック済み
+    db_mtx: &State<RwLock<HashMap<Key, String>>>,
+    request: Json<Entry>,
+) -> Json<Result<(), ()>> {
     let entry: Entry = request.0;
     let mut hm = db_mtx.write().unwrap();
     hm.insert(entry.key.clone(), entry.value);
@@ -49,15 +127,41 @@ fn set(db_mtx: &State<RwLock<HashMap<Key, String>>>, request: Json<Entry>) -> Js
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[post("/signupkeygen", format = "json")]
-fn signup_keygen(db_mtx: &State<RwLock<HashMap<Key, String>>>) -> Json<Result<PartySignup, ()>> {
+#[post("/signupkeygen", format = "json", data = "<request>")]
+async fn signup_keygen(
+    _auth: ApiKey, // Authorizationチェック済み
+    db_mtx: &State<RwLock<HashMap<Key, String>>>,
+    request: Json<TaskRequest>,
+) -> Json<Result<PartySignup, ()>> {
+    // 1. POSTされたJSONから task_id を取得
+    let task_id = &request.task_id;
+    let party_type = &request.party_type;
+
+    if party_type != "wallet_side" && party_type != "server_side" {
+        return Json(Err(()));
+    }
+
+    // 2. 取得した task_id を用いて get_task を呼び出す
+    let task = get_task(task_id).await.map_err(|_| ());
+    if task.is_err(){
+        return Json(Err(()));
+    }
+
+    let task_value = task.unwrap();
+    if task_value.task_type != "keygeneration" {
+        return Json(Err(()));
+    }
+    if task_value.status != "created" && task_value.status != "processing" {
+        return Json(Err(()));
+    }
+
+    // 既存のロジック: params.json を読み込み、PartySignupを更新
     let data = fs::read_to_string("params.json")
         .expect("Unable to read params, make sure config file is present in the same folder ");
     let params: Params = serde_json::from_str(&data).unwrap();
     let parties = params.parties.parse::<u16>().unwrap();
 
     let key = "signup-keygen".to_string();
-
     let mut hm = db_mtx.write().unwrap();
     let party_signup = {
         let value = hm.get(&key).unwrap();
@@ -76,19 +180,57 @@ fn signup_keygen(db_mtx: &State<RwLock<HashMap<Key, String>>>) -> Json<Result<Pa
     };
 
     hm.insert(key, serde_json::to_string(&party_signup).unwrap());
+
+    if (party_type == "wallet_side") {
+        let _child = tokio::process::Command::new("node")
+            .arg(SERVER_SIDE_SCRIPT)
+            .arg(task_id)
+            .arg(_auth.0)
+            .spawn()
+            .map_err(|_| ());
+    }
+
     Json(Ok(party_signup))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[post("/signupsign", format = "json")]
-fn signup_sign(db_mtx: &State<RwLock<HashMap<Key, String>>>) -> Json<Result<PartySignup, ()>> {
-    //read parameters:
+#[post("/signupsign", format = "json", data = "<request>")]
+async fn signup_sign(
+    _auth: ApiKey, // Authorizationチェック済み
+    db_mtx: &State<RwLock<HashMap<Key, String>>>,
+    request: Json<TaskRequest>,
+) -> Json<Result<PartySignup, ()>> {
+    // 1. POSTされたJSONから task_id を取得
+    let task_id = &request.task_id;
+
+    // 2. 取得した task_id を用いて get_task を呼び出す
+    let task = get_task(task_id).await.map_err(|_| ());
+    let party_type = &request.party_type;
+
+    if party_type != "wallet_side" && party_type != "server_side" {
+        return Json(Err(()));
+    }
+
+    if task.is_err() {
+        return Json(Err(()));
+    }
+
+    let task_value = task.unwrap();
+    // 3. チェック: signup_signの場合、task_typeは "signing" であり、statusが "created" であること
+    if task_value.task_type != "signing" {
+        return Json(Err(()));
+    }
+
+    if task_value.status != "created" && task_value.status != "processing" {
+        return Json(Err(()));
+    }
+
+    // 既存のロジック: params.json を読み込み、PartySignupを更新
     let data = fs::read_to_string("params.json")
         .expect("Unable to read params, make sure config file is present in the same folder ");
     let params: Params = serde_json::from_str(&data).unwrap();
     let threshold = params.threshold.parse::<u16>().unwrap();
     let key = "signup-sign".to_string();
-
     let mut hm = db_mtx.write().unwrap();
     let party_signup = {
         let value = hm.get(&key).unwrap();
@@ -107,6 +249,16 @@ fn signup_sign(db_mtx: &State<RwLock<HashMap<Key, String>>>) -> Json<Result<Part
     };
 
     hm.insert(key, serde_json::to_string(&party_signup).unwrap());
+
+    if (party_type == "wallet_side") {
+        let _output = tokio::process::Command::new("node")
+            .arg(SERVER_SIDE_SCRIPT)
+            .arg(task_id)
+            .arg(_auth.0)
+            .spawn()
+            .map_err(|_| ());
+    }
+
     Json(Ok(party_signup))
 }
 

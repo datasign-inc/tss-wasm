@@ -1,8 +1,8 @@
-#![cfg(target_arch = "wasm32")]
+#![cfg(any(target_arch = "wasm32", target_arch = "aarch64"))]
 #![allow(non_snake_case)]
 use crate::common::{
     aes_decrypt, aes_encrypt, broadcast, check_sig, poll_for_broadcasts, poll_for_p2p, postb,
-    public_key_address, sendp2p, PartySignup, AEAD, AES_KEY_BYTES_LEN,
+    public_key_address, sendp2p, PartySignup, AEAD, AES_KEY_BYTES_LEN, TaskRequest
 };
 use crate::curv::elliptic::curves::traits::{ECPoint, ECScalar};
 use crate::curv::{
@@ -17,11 +17,12 @@ use crate::curv::{
 use crate::errors::Result;
 use crate::gg_2018::mta::*;
 use crate::gg_2018::party_i::*;
-use crate::log;
 use crate::paillier::EncryptionKey;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,7 +46,7 @@ pub struct GG18KeygenClientContext {
     public_key_address: Option<String>,
 }
 
-fn new_client_with_headers() -> Result<Client> {
+fn new_client_with_headers(token: &str) -> Result<Client> {
     let mut headers = HeaderMap::new();
     headers.insert(
         "Content-Type",
@@ -55,26 +56,33 @@ fn new_client_with_headers() -> Result<Client> {
         "Accept",
         HeaderValue::from_static("application/json; charset=utf-8"),
     );
+    headers.insert(
+        "Authorization",
+        HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+    );
 
     Ok(reqwest::Client::builder()
         .default_headers(headers)
         .build()?)
 }
 
-#[wasm_bindgen]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub async fn gg18_keygen_client_new_context(
     addr: String,
     t: usize,
     n: usize,
     _delay: u32,
+    token: String,
+    task_id: String,
+    party_type: String
 ) -> Result<String> {
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     let params = Parameters {
         threshold: t,
         share_count: n,
     };
 
-    let (party_num_int, uuid) = match signup_keygen(&client, &addr).await? {
+    let (party_num_int, uuid) = match signup_keygen(&client, &addr, &task_id, &party_type).await? {
         PartySignup { number, uuid } => (number, uuid),
     };
 
@@ -99,10 +107,21 @@ pub async fn gg18_keygen_client_new_context(
     })?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_keygen_client_round1(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_keygen_client_round1(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18KeygenClientContext>(&context)?;
-    let client = reqwest::Client::new();
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "Authorization",
+        HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+    );
+
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .expect("Failed to build client");
+
     let party_keys = Keys::create(context.party_num_int as usize);
     let (bc_i, decom_i) = party_keys.phase1_broadcast_phase3_proof_of_correct_key();
 
@@ -141,10 +160,21 @@ pub async fn gg18_keygen_client_round1(context: String, delay: u32) -> Result<St
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_keygen_client_round2(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_keygen_client_round2(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18KeygenClientContext>(&context)?;
-    let client = reqwest::Client::new();
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "Authorization",
+        HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+    );
+
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .expect("Failed to build client");
+
     // send ephemeral public keys and check commitments correctness
     broadcast(
         &client,
@@ -216,10 +246,21 @@ pub async fn gg18_keygen_client_round2(context: String, delay: u32) -> Result<St
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_keygen_client_round3(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_keygen_client_round3(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18KeygenClientContext>(&context)?;
-    let client = reqwest::Client::new();
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "Authorization",
+        HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+    );
+
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .expect("Failed to build client");
+
     let mut j = 0;
     for (k, i) in (1..=context.params.share_count as u16).enumerate() {
         if i != context.party_num_int {
@@ -275,10 +316,20 @@ pub async fn gg18_keygen_client_round3(context: String, delay: u32) -> Result<St
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_keygen_client_round4(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_keygen_client_round4(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18KeygenClientContext>(&context)?;
-    let client = reqwest::Client::new();
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "Authorization",
+        HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+    );
+
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .expect("Failed to build client");
     broadcast(
         &client,
         &context.addr,
@@ -330,10 +381,19 @@ pub async fn gg18_keygen_client_round4(context: String, delay: u32) -> Result<St
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_keygen_client_round5(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_keygen_client_round5(context: String, delay: u32, token: String) -> Result<String> {
     let context = serde_json::from_str::<GG18KeygenClientContext>(&context)?;
-    let client = reqwest::Client::new();
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "Authorization",
+        HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+    );
+
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .expect("Failed to build client");
     broadcast(
         &client,
         &context.addr,
@@ -388,21 +448,27 @@ pub async fn gg18_keygen_client_round5(context: String, delay: u32) -> Result<St
     Ok(keygen_json)
 }
 
-pub async fn signup_keygen(client: &Client, addr: &str) -> Result<PartySignup> {
-    let key = "signup-keygen".to_string();
-    let res_body = postb(client, addr, "signupkeygen", key).await?;
+pub async fn signup_keygen(client: &Client, addr: &str, task_id: &str, party_type: &str) -> Result<PartySignup> {
+    let request = TaskRequest {
+        task_id: task_id.to_string(),
+        party_type: party_type.to_string(),
+    };
+    let res_body = postb(client, addr, "signupkeygen", request).await?;
     let u: std::result::Result<PartySignup, ()> = serde_json::from_str(&res_body)?;
     Ok(u.unwrap())
 }
 
-pub async fn signup_sign(client: &Client, addr: &str) -> Result<PartySignup> {
-    let key = "signup-sign".to_string();
-    let res_body = postb(client, addr, "signupsign", key).await?;
+pub async fn signup_sign(client: &Client, addr: &str, task_id: &str, party_type: &str) -> Result<PartySignup> {
+    let request = TaskRequest {
+        task_id: task_id.to_string(),
+        party_type: party_type.to_string(),
+    };
+    let res_body = postb(client, addr, "signupsign", request).await?;
     let u: std::result::Result<PartySignup, ()> = serde_json::from_str(&res_body)?;
     Ok(u.unwrap())
 }
 
-#[wasm_bindgen]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GG18SignClientContext {
     addr: String,
@@ -445,20 +511,23 @@ pub struct GG18SignClientContext {
     commit5c_vec: Option<Vec<Phase5Com2>>,
 }
 
-#[wasm_bindgen]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub async fn gg18_sign_client_new_context(
     addr: String,
     t: usize,
     _n: usize,
     key_store: String,
     message_str: String,
+    token: String,
+    task_id: String,
+    party_type: String
 ) -> Result<String> {
     let message = match hex::decode(message_str.clone()) {
         Ok(x) => x,
         Err(_e) => message_str.as_bytes().to_vec(),
     };
     // let message = &message[..];
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
 
     let (party_keys, shared_keys, party_id, vss_scheme_vec, paillier_key_vector, y_sum): (
         Keys,
@@ -470,7 +539,7 @@ pub async fn gg18_sign_client_new_context(
     ) = serde_json::from_str(&key_store)?;
 
     //signup:
-    let (party_num_int, uuid) = match signup_sign(&client, &addr).await? {
+    let (party_num_int, uuid) = match signup_sign(&client, &addr, &task_id, &party_type).await? {
         PartySignup { number, uuid } => (number, uuid),
     };
 
@@ -515,10 +584,10 @@ pub async fn gg18_sign_client_new_context(
     })?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_sign_client_round0(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_sign_client_round0(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18SignClientContext>(&context)?;
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     // round 0: collect signers IDs
     broadcast(
         &client,
@@ -571,10 +640,10 @@ pub async fn gg18_sign_client_round0(context: String, delay: u32) -> Result<Stri
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_sign_client_round1(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_sign_client_round1(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18SignClientContext>(&context)?;
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     let (com, decommit) = context.sign_keys.as_ref().unwrap().phase1_broadcast();
     let (m_a_k, _) = MessageA::a(
         &context.sign_keys.as_ref().unwrap().k_i,
@@ -608,10 +677,10 @@ pub async fn gg18_sign_client_round1(context: String, delay: u32) -> Result<Stri
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_sign_client_round2(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_sign_client_round2(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18SignClientContext>(&context)?;
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     let mut j = 0;
     let mut bc1_vec: Vec<SignBroadcastPhase1> = Vec::new();
     let mut m_a_vec: Vec<MessageA> = Vec::new();
@@ -701,10 +770,10 @@ pub async fn gg18_sign_client_round2(context: String, delay: u32) -> Result<Stri
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_sign_client_round3(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_sign_client_round3(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18SignClientContext>(&context)?;
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     let mut m_b_gamma_rec_vec: Vec<MessageB> = Vec::new();
     let mut m_b_w_rec_vec: Vec<MessageB> = Vec::new();
 
@@ -795,10 +864,10 @@ pub async fn gg18_sign_client_round3(context: String, delay: u32) -> Result<Stri
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_sign_client_round4(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_sign_client_round4(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18SignClientContext>(&context)?;
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     // decommit to gamma_i
     broadcast(
         &client,
@@ -872,10 +941,10 @@ pub async fn gg18_sign_client_round4(context: String, delay: u32) -> Result<Stri
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_sign_client_round5(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_sign_client_round5(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18SignClientContext>(&context)?;
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     //phase (5A)  broadcast commit
     broadcast(
         &client,
@@ -910,10 +979,10 @@ pub async fn gg18_sign_client_round5(context: String, delay: u32) -> Result<Stri
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_sign_client_round6(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_sign_client_round6(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18SignClientContext>(&context)?;
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     //phase (5B)  broadcast decommit and (5B) ZK proof
     broadcast(
         &client,
@@ -985,10 +1054,10 @@ pub async fn gg18_sign_client_round6(context: String, delay: u32) -> Result<Stri
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_sign_client_round7(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_sign_client_round7(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18SignClientContext>(&context)?;
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     //////////////////////////////////////////////////////////////////////////////
     broadcast(
         &client,
@@ -1023,10 +1092,10 @@ pub async fn gg18_sign_client_round7(context: String, delay: u32) -> Result<Stri
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_sign_client_round8(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_sign_client_round8(context: String, delay: u32, token: String) -> Result<String> {
     let mut context = serde_json::from_str::<GG18SignClientContext>(&context)?;
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     //phase (5B)  broadcast decommit and (5B) ZK proof
     broadcast(
         &client,
@@ -1077,10 +1146,10 @@ pub async fn gg18_sign_client_round8(context: String, delay: u32) -> Result<Stri
     Ok(serde_json::to_string(&context)?)
 }
 
-#[wasm_bindgen]
-pub async fn gg18_sign_client_round9(context: String, delay: u32) -> Result<String> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn gg18_sign_client_round9(context: String, delay: u32, token: String) -> Result<String> {
     let context = serde_json::from_str::<GG18SignClientContext>(&context)?;
-    let client = new_client_with_headers()?;
+    let client = new_client_with_headers(&token)?;
     //////////////////////////////////////////////////////////////////////////////
     broadcast(
         &client,
@@ -1125,7 +1194,7 @@ pub async fn gg18_sign_client_round9(context: String, delay: u32) -> Result<Stri
         //"v"
         sig.recid.to_string(),
     ])?;
-    crate::console_log!("sign_json: {:?}", sign_json);
+    // crate::console_log!("sign_json: {:?}", sign_json);
 
     check_sig(
         &sig.r,

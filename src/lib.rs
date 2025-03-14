@@ -24,6 +24,7 @@ pub mod common;
 
 pub mod api;
 pub mod errors;
+pub mod jni;
 
 #[cfg(target_arch = "wasm32")]
 extern crate wasm_bindgen;
